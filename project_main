@@ -1,0 +1,190 @@
+import requests
+import re
+import pandas as pd
+from API_project_4TN4 import extract_prices, comparison
+from blur_detection import user_images
+
+##############################
+# USER CONTROLS #
+# import image
+img = user_images()
+
+# API
+api_url = 'https://api.api-ninjas.com/v1/imagetotext'
+image_file_descriptor = open(img, 'rb')
+files = {'image': image_file_descriptor}
+r = requests.post(api_url, files=files, headers={'X-Api-Key': 'YOUR_API_KEY'})
+
+response_data = r.json()
+
+# Extract prices from OCR response
+receipt_data = extract_prices(response_data)
+
+print("\nInitial receipt data:")
+df = pd.DataFrame(receipt_data.items(), columns=['Item', 'Price'])
+print(df)
+
+## Table Modifications
+while True:
+    print("\n📌 Receipt Modifications:")
+    print("1 - Edit an item name")
+    print("2 - Edit a price")
+    print("3 - Delete a row")
+    print("4 - Finish and proceed")
+    
+    choice = input("Select an option (1/2/3/4): ").strip()
+
+    if choice == '1':  # Edit an item name
+        print("\nCurrent Data:")
+        print(df)
+        try:
+            index = int(input("Enter the row index to edit the item name: "))
+            new_item = input("Enter the new item name: ").strip()
+            df.at[index, 'Item'] = new_item
+            print("\n✅ Updated Data:")
+            print(df)
+        except (ValueError, IndexError):
+            print("❌ Invalid input. Please enter a valid row index.")
+
+    elif choice == '2':  # Edit a price
+        print("\nCurrent Data:")
+        print(df)
+        try:
+            index = int(input("Enter the row index to edit the price: "))
+            new_price = float(input("Enter the new price: "))
+            df.at[index, 'Price'] = new_price
+            print("\n✅ Updated Data:")
+            print(df)
+        except (ValueError, IndexError):
+            print("❌ Invalid input. Please enter a valid row index and numeric price.")
+
+    elif choice == '3':  # Delete a row
+        print("\nCurrent Data:")
+        print(df)
+        try:
+            index = int(input("Enter the row index to delete: "))
+            df = df.drop(index).reset_index(drop=True)
+            print("\n✅ Updated Data:")
+            print(df)
+        except (ValueError, KeyError):
+            print("❌ Invalid input. Please enter a valid row index.")
+
+    elif choice == '4':  # Finish editing
+        break
+
+    else:
+        print("❌ Invalid choice. Please enter 1, 2, 3, or 4.")
+
+print("\n📄 Final Receipt Data:")
+print(df)
+
+
+######### BILL SPLITTING #############
+
+user_name = input("\n👤 Enter your name: ").strip()
+
+# User selects what they ordered
+ordered_items = []
+splits = {}  # Dictionary to track how many people are sharing each item
+
+while True:
+    print("\n🛒 Select the items you ordered (enter row index). Type 'done' when finished.")
+    print(df.to_string(index=True))
+
+    user_input = input("Enter item index: ").strip()
+    if user_input.lower() == 'done':
+        break
+    try:
+        index = int(user_input)
+        ordered_items.append(df.iloc[index])
+
+        # Ask how many people are splitting this item
+        while True:
+            try:
+                num_people = int(input(f"👥 How many people are sharing '{df.at[index, 'Item']}'? "))
+                if num_people <= 0:
+                    raise ValueError
+                splits[index] = num_people
+                break
+            except ValueError:
+                print("❌ Invalid input. Enter a positive whole number.")
+    except (ValueError, IndexError):
+        print("❌ Invalid input. Please enter a valid row index.")
+
+# Convert selected items to a DataFrame
+if ordered_items:
+    ordered_df = pd.DataFrame(ordered_items)
+    ordered_df['Price'] = pd.to_numeric(ordered_df['Price'], errors='coerce')  # Ensure prices are numeric
+else:
+    print("\n❌ No items selected. Exiting...")
+    exit()
+
+# Calculate total price per person
+subtotal_per_person = {}
+total_subtotal = 0
+
+for index, row in ordered_df.iterrows():
+    item_price = row['Price']
+    num_people = splits.get(index, 1)  # Default to 1 if no split was entered
+    per_person_price = item_price / num_people
+
+    # Track subtotal per person
+    total_subtotal += item_price
+    for i in range(num_people):
+        subtotal_per_person[i] = subtotal_per_person.get(i, 0) + per_person_price
+
+# Calculate tax and tips
+tax_rate = 0.13  # Example: 13% tax
+total_tax = total_subtotal * tax_rate
+
+# Tip selection
+print("\n💵 Tip Options:")
+print("1 - 10%")
+print("2 - 15%")
+print("3 - 20%")
+print("4 - Enter a custom tip amount")
+
+tip_choice = input("Select an option (1/2/3/4): ").strip()
+
+if tip_choice == '1':
+    tip_percentage = 0.10
+elif tip_choice == '2':
+    tip_percentage = 0.15
+elif tip_choice == '3':
+    tip_percentage = 0.20
+elif tip_choice == '4':
+    while True:
+        try:
+            tip_percentage = float(input("Enter your custom tip percentage (e.g., 0.15 for 15%): "))
+            break
+        except ValueError:
+            print("❌ Invalid input. Enter a numeric value.")
+else:
+    print("❌ Invalid choice. Defaulting to 15% tip.")
+    tip_percentage = 0.15
+
+total_tip = total_subtotal * tip_percentage
+total_amount_due = total_subtotal + total_tax + total_tip
+
+# Calculate per-person final total
+for person in subtotal_per_person:
+    subtotal_per_person[person] += (total_tax + total_tip) / len(subtotal_per_person)
+
+# Display final bill summary
+print("\n💳 **Final Bill Summary**")
+print(ordered_df.to_string(index=False))  # Display ordered items
+print(f"\nSubtotal: ${total_subtotal:.2f}")
+print(f"Tax (13%): ${total_tax:.2f}")
+print(f"Tip ({tip_percentage * 100}%): ${total_tip:.2f}")
+print(f"Total Amount Due: ${total_amount_due:.2f}\n")
+
+# Print individual breakdown
+for person, amount in subtotal_per_person.items():
+    print(f"💰 Person {person + 1} pays: ${amount:.2f}")
+
+# Payment confirmation
+confirm = input("\nConfirm payment? (yes/no): ").strip().lower()
+if confirm == 'yes':
+    print(f"\n✅ **Payment Successful! Thank you, {user_name}!** 🎉")
+else:
+    print("\n❌ Payment canceled.")
