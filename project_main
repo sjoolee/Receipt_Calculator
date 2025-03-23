@@ -1,12 +1,12 @@
 import requests
-import re
 import pandas as pd
+from collections import defaultdict
 from API_project_4TN4 import extract_prices, comparison
 from blur_detection import user_images
 
 ##############################
 # USER CONTROLS #
-# import image
+# Import image
 img = user_images()
 
 # API
@@ -20,9 +20,11 @@ response_data = r.json()
 # Extract prices from OCR response
 receipt_data = extract_prices(response_data)
 
-print("\nInitial receipt data:")
+print("\n📄 Initial Receipt Data:")
 df = pd.DataFrame(receipt_data.items(), columns=['Item', 'Price'])
+df['Price'] = pd.to_numeric(df['Price'], errors='coerce')  # Convert prices to numeric values
 print(df)
+
 
 ## Table Modifications
 while True:
@@ -79,63 +81,57 @@ print("\n📄 Final Receipt Data:")
 print(df)
 
 
-######### BILL SPLITTING #############
+# Ensure at least one item is selected
+person_totals = defaultdict(float)
+person_orders = defaultdict(list)  # Stores items each person ordered
+items_selected = False  # Flag to check if anything was ordered
 
-user_name = input("\n👤 Enter your name: ").strip()
+while not items_selected:
+    # Reset totals for each retry
+    person_totals.clear()
+    person_orders.clear()
 
-# User selects what they ordered
-ordered_items = []
-splits = {}  # Dictionary to track how many people are sharing each item
+    while True:
+        user_name = input("\n👤 Enter your name (or type 'done' if all users are entered): ").strip()
+        if user_name.lower() == 'done':
+            break
 
-while True:
-    print("\n🛒 Select the items you ordered (enter row index). Type 'done' when finished.")
-    print(df.to_string(index=True))
+        print(f"\n🛒 {user_name}, select the items you ordered (enter row index). Type 'done' when finished.")
+        print(df.to_string(index=True))
 
-    user_input = input("Enter item index: ").strip()
-    if user_input.lower() == 'done':
-        break
-    try:
-        index = int(user_input)
-        ordered_items.append(df.iloc[index])
-
-        # Ask how many people are splitting this item
         while True:
-            try:
-                num_people = int(input(f"👥 How many people are sharing '{df.at[index, 'Item']}'? "))
-                if num_people <= 0:
-                    raise ValueError
-                splits[index] = num_people
+            user_input = input("Enter item index: ").strip()
+            if user_input.lower() == 'done':
                 break
-            except ValueError:
-                print("❌ Invalid input. Enter a positive whole number.")
-    except (ValueError, IndexError):
-        print("❌ Invalid input. Please enter a valid row index.")
+            try:
+                index = int(user_input)
+                item_name = df.at[index, 'Item']
+                item_price = df.at[index, 'Price']
 
-# Convert selected items to a DataFrame
-if ordered_items:
-    ordered_df = pd.DataFrame(ordered_items)
-    ordered_df['Price'] = pd.to_numeric(ordered_df['Price'], errors='coerce')  # Ensure prices are numeric
-else:
-    print("\n❌ No items selected. Exiting...")
-    exit()
+                # Ask how many people are splitting this item
+                shared_with = input(f"👥 Who are you sharing '{item_name}' with? (Enter names separated by commas, or 'none' if alone): ").strip()
+                shared_people = [user_name] if shared_with.lower() == 'none' else [user_name] + [p.strip() for p in shared_with.split(",")]
 
-# Calculate total price per person
-subtotal_per_person = {}
-total_subtotal = 0
+                num_people = len(shared_people)
+                per_person_price = item_price / num_people
 
-for index, row in ordered_df.iterrows():
-    item_price = row['Price']
-    num_people = splits.get(index, 1)  # Default to 1 if no split was entered
-    per_person_price = item_price / num_people
+                # Distribute cost among people & track items ordered
+                for person in shared_people:
+                    person_totals[person] += per_person_price
+                    person_orders[person].append(f"{item_name} (${per_person_price:.2f})")
 
-    # Track subtotal per person
-    total_subtotal += item_price
-    for i in range(num_people):
-        subtotal_per_person[i] = subtotal_per_person.get(i, 0) + per_person_price
+                items_selected = True  # At least one item has been ordered
 
-# Calculate tax and tips
+            except (ValueError, IndexError):
+                print("❌ Invalid input. Please enter a valid row index.")
+
+    if not items_selected:
+        print("\n⚠️ **At least one item must be selected! Please enter at least one order.**")
+
+# Proceed with calculations
+subtotal = sum(person_totals.values())
 tax_rate = 0.13  # Example: 13% tax
-total_tax = total_subtotal * tax_rate
+total_tax = subtotal * tax_rate
 
 # Tip selection
 print("\n💵 Tip Options:")
@@ -163,28 +159,30 @@ else:
     print("❌ Invalid choice. Defaulting to 15% tip.")
     tip_percentage = 0.15
 
-total_tip = total_subtotal * tip_percentage
-total_amount_due = total_subtotal + total_tax + total_tip
+total_tip = subtotal * tip_percentage
+total_amount_due = subtotal + total_tax + total_tip
 
 # Calculate per-person final total
-for person in subtotal_per_person:
-    subtotal_per_person[person] += (total_tax + total_tip) / len(subtotal_per_person)
+for person in person_totals:
+    person_totals[person] += (total_tax + total_tip) * (person_totals[person] / subtotal)
 
 # Display final bill summary
 print("\n💳 **Final Bill Summary**")
-print(ordered_df.to_string(index=False))  # Display ordered items
-print(f"\nSubtotal: ${total_subtotal:.2f}")
+print(f"\nSubtotal: ${subtotal:.2f}")
 print(f"Tax (13%): ${total_tax:.2f}")
 print(f"Tip ({tip_percentage * 100}%): ${total_tip:.2f}")
 print(f"Total Amount Due: ${total_amount_due:.2f}\n")
 
 # Print individual breakdown
-for person, amount in subtotal_per_person.items():
-    print(f"💰 Person {person + 1} pays: ${amount:.2f}")
+for person, amount in person_totals.items():
+    print(f"\n💰 **{person} Pays: ${amount:.2f}**")
+    print("📝 Ordered:")
+    for item in person_orders[person]:
+        print(f"   - {item}")
 
 # Payment confirmation
 confirm = input("\nConfirm payment? (yes/no): ").strip().lower()
 if confirm == 'yes':
-    print(f"\n✅ **Payment Successful! Thank you, {user_name}!** 🎉")
+    print(f"\n🎉 **Payment Successful! Thank you!** 🎉")
 else:
     print("\n❌ Payment canceled.")
