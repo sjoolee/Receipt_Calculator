@@ -31,10 +31,10 @@ def extract_prices(ocr_response):
         re.IGNORECASE
     )
 
-    common_labels_pattern = re.compile(r'\b(?:' + '|'.join(re.escape(label) for label in ["RDER:", "Table", "Dine In", "Take", "Order", "Check"]) + r')\b', re.IGNORECASE)
+    common_labels_pattern = re.compile(r'\b(?:' + '|'.join(re.escape(label) for label in ["RDER:", "server", "Table", "Dine In", "Take", "Order", "Check"]) + r')\b', re.IGNORECASE)
 
     for line in lines:
-        print(f"Processing line: {line}")
+        #print(f"Processing line: {line}")
 
         if common_labels_pattern.search(line):
             parts = common_labels_pattern.split(line, maxsplit=1)[-1]  
@@ -49,10 +49,10 @@ def extract_prices(ocr_response):
             if not re.search(reject_keywords, part):
                 filtered_parts.append(part)
 
-        print(f"Filtered parts: {filtered_parts}")
+        #print(f"Filtered parts: {filtered_parts}")
         
         filtered_line = ' '.join(filtered_parts)
-        print(f"Filtered line: {filtered_line}")
+        #print(f"Filtered line: {filtered_line}")
         
         matches = item_price_pattern.findall(filtered_line)
         for item, price in matches:
