@@ -25,7 +25,6 @@ df = pd.DataFrame(receipt_data.items(), columns=['Item', 'Price'])
 df['Price'] = pd.to_numeric(df['Price'], errors='coerce')  # Convert prices to numeric values
 print(df)
 
-
 ## Table Modifications
 while True:
     print("\n📌 Receipt Modifications:")
@@ -80,10 +79,10 @@ while True:
 print("\n📄 Final Receipt Data:")
 print(df)
 
-
 # Ensure at least one item is selected
 person_totals = defaultdict(float)
 person_orders = defaultdict(list)  # Stores items each person ordered
+item_splits = defaultdict(list)  # Stores who is splitting each item
 items_selected = False  # Flag to check if anything was ordered
 
 while not items_selected:
@@ -108,6 +107,10 @@ while not items_selected:
                 item_name = df.at[index, 'Item']
                 item_price = df.at[index, 'Price']
 
+                # Display existing splits for the item
+                if item_name in item_splits:
+                    print(f"\n🔍 **{item_name}** has already been ordered by: {', '.join(item_splits[item_name])}")
+
                 # Ask how many people are splitting this item
                 shared_with = input(f"👥 Who are you sharing '{item_name}' with? (Enter names separated by commas, or 'none' if alone): ").strip()
                 shared_people = [user_name] if shared_with.lower() == 'none' else [user_name] + [p.strip() for p in shared_with.split(",")]
@@ -120,7 +123,13 @@ while not items_selected:
                     person_totals[person] += per_person_price
                     person_orders[person].append(f"{item_name} (${per_person_price:.2f})")
 
+                # Track who is splitting the item
+                item_splits[item_name].extend(shared_people)
+
                 items_selected = True  # At least one item has been ordered
+
+                # Print current splits for the item
+                print(f"\n👥 {item_name} is now being split by: {', '.join(item_splits[item_name])}")
 
             except (ValueError, IndexError):
                 print("❌ Invalid input. Please enter a valid row index.")
