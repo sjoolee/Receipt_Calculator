@@ -30,10 +30,8 @@ def correct_ocr_errors(text):
 
     return text
 
-import re
-
 def extract_prices(ocr_response):
-    text = correct_ocr_errors(ocr_response)  # Correct OCR errors if necessary
+    text = correct_ocr_errors(ocr_response)
     lines = text.split('\n')
 
     item_price_pattern = re.compile(r'(.+?)\s*[-]?\s*\$?(\d+\.\d{2})')  # Pattern to extract item-price pairs
@@ -45,46 +43,36 @@ def extract_prices(ocr_response):
         re.IGNORECASE
     )
 
-    # Create a regex pattern to match any of the common labels
-    common_labels_pattern = re.compile(r'\b(?:' + '|'.join(re.escape(label) for label in ["Table", "Dine In", "Order", "Check"]) + r')\b', re.IGNORECASE)
+    common_labels_pattern = re.compile(r'\b(?:' + '|'.join(re.escape(label) for label in ["Table", "Dine In", "Take", "Order", "Check"]) + r')\b', re.IGNORECASE)
 
     for line in lines:
         print(f"Processing line: {line}")
 
-        # Split the line at the common labels if they are present, and keep the part after the label
-        if common_labels_pattern.search(line):  # Check if any common label is in the line
-            # Find the part after the first common label
-            parts = common_labels_pattern.split(line, maxsplit=1)[-1]  # Get the part after the first match
+        if common_labels_pattern.search(line):
+            parts = common_labels_pattern.split(line, maxsplit=1)[-1]  
         else:
             parts = line  # If no common label, process the whole line as one part
 
         # Split the remaining part into individual components (words or phrases)
         parts = parts.split()
 
-        # Filter out parts that match reject keywords
         filtered_parts = []
         for part in parts:
-            # Check if the part matches any of the reject keywords
             if not re.search(reject_keywords, part):
                 filtered_parts.append(part)
 
-        print(f"Filtered parts: {filtered_parts}")  # Debugging the filtered parts
-
-        # Rebuild the filtered line
+        print(f"Filtered parts: {filtered_parts}")
+        
         filtered_line = ' '.join(filtered_parts)
-        print(f"Filtered line: {filtered_line}")  # Debugging the filtered line
-
-        # Extract valid item-price pairs from the filtered line
+        print(f"Filtered line: {filtered_line}")
+        
         matches = item_price_pattern.findall(filtered_line)
         for item, price in matches:
             item = item.strip()
-            if item:  # Only add valid items
+            if item: 
                 items_prices[item] = float(price)
 
     return items_prices
-
-
-
 
 
 
